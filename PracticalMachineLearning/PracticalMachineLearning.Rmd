@@ -1,0 +1,107 @@
+---
+title: "Practical Machine Learning Project"
+author: "Micah Gaither"
+date: "Sunday, May 24, 2015"
+output: html_document
+---
+#Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+#Data
+The training data for this project are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment. 
+
+```{r, echo=FALSE}
+setwd('C:\\Users\\micah.gaither\\Google Drive\\Coursera\\MachineLearning')
+```
+
+##Preparation
+Download the the project data and set the working directory
+
+```{r}
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(RColorBrewer)
+library(rattle)
+library(randomForest)
+set.seed(54321)
+setwd('C:\\Users\\micah.gaither\\Google Drive\\Coursera\\MachineLearning')
+trainingCSV <- read.csv(file="pml-training.csv", header=TRUE, as.is = TRUE, stringsAsFactors = FALSE, sep=',', na.strings=c('NA','','#DIV/0!'))
+testingCSV <- read.csv(file="pml-testing.csv", header=TRUE, as.is = TRUE, stringsAsFactors = FALSE, sep=',', na.strings=c('NA','','#DIV/0!'))
+
+```
+
+
+##Cleaning and Preprocessing
+
+
+
+```{r}
+trainingCSV$classe <- as.factor(trainingCSV$classe)  
+
+NAclean <- apply(trainingCSV,2,function(x) {sum(is.na(x))}) 
+trainingCSV <- trainingCSV[,which(NAclean == 0)]
+NAclean <- apply(testingCSV,2,function(x) {sum(is.na(x))}) 
+testingCSV <- testingCSV[,which(NAclean == 0)]
+
+
+tidy <- which(lapply(trainingCSV, class) %in% "numeric")
+preProcess <-preProcess(trainingCSV[,tidy],method=c('knnImpute', 'center', 'scale'))
+trainPredict <- predict(preProcess, trainingCSV[,tidy])
+trainPredict$classe <- trainingCSV$classe
+testPredict <-predict(preProcess,testingCSV[,tidy])
+
+```
+
+##Near Zero and Cross Validation
+
+```{r, echo=FALSE}
+nearZero <- nearZeroVar(trainPredict,saveMetrics=TRUE)
+trainPredict <- trainPredict[,nearZero$nzv==FALSE]
+nearZero <- nearZeroVar(testPredict,saveMetrics=TRUE)
+testPredict <- testPredict[,nearZero$nzv==FALSE]
+
+inTrain <- createDataPartition(trainPredict$classe, p = 3/4, list=FALSE)
+training <- trainPredict[inTrain,]
+crossValidation <- trainPredict[-inTrain,]
+
+```
+
+##Model
+Create a model to predict the classe using a random forest
+
+```{r}
+fittedModel <- train(classe ~., method="rf", data=training, trControl=trainControl(method='cv'), number=5, allowParallel=TRUE )
+saveRDS(fittedModel, "rfmodelfitted.RDS")
+model <- readRDS("rfmodelfitted.RDS")
+
+```
+
+
+
+
+##Confusion Matrix
+
+```{r}
+trainPrediction <- predict(fittedModel, training)
+confusionMatrix(trainPrediction, training$classe)
+
+crossValPrediction <- predict(fittedModel, crossValidation)
+confusionMatrix(crossValPrediction, crossValidation$classe)
+```
+
+##Prediction
+```{r}
+testingPrediction <- predict(fittedModel, testPredict)
+testingPrediction
+```
+
+
